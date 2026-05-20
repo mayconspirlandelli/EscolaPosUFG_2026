@@ -1,10 +1,14 @@
 import ChatBot from "react-chatbotify";
 import "@/styles/chatbot.css";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { useRef } from "react";
 
 const ChatEscolaPos = () => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     const modelName = import.meta.env.VITE_GEMINI_MODEL || "gemini-1.5-flash";
+
+    // Conversational memory for multi-turn chat
+    const chatHistory = useRef<Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>>([]);
 
     const CONTEXT = `
         - Inscrição e matrícula: ler edital, critérios de seleção, pagamento de taxa, assinatura de contrato.
@@ -26,7 +30,7 @@ const ChatEscolaPos = () => {
         - Certificação: solicitar à coordenação após atender requisitos.
     `;
 
-    const SYSTEM_MESSAGE = 
+    const SYSTEM_MESSAGE =
         "Você é um assistente virtual chamado Ana especializado na Escola de Pós-Graduação da UFG e na UFG.\n\n" +
         "Instruções:\n" +
         "1. Seja direto: Dê respostas curtas e informativas.\n" +
@@ -51,13 +55,24 @@ const ChatEscolaPos = () => {
         );
     };
 
-    const handleGemini = async (params: any) => {
+    const handleGeminiStream = async (params: any) => {
         try {
-            console.log("Iniciando chamada ao Gemini...");
+            console.log("Iniciando chamada ao Gemini Stream...");
             if (!apiKey) {
                 console.error("VITE_GEMINI_API_KEY não encontrada.");
                 await params.injectMessage("Erro: Chave de API não configurada corretamente.");
                 return;
+            }
+
+            // Add user message to history
+            chatHistory.current.push({
+                role: "user",
+                parts: [{ text: params.userInput }]
+            });
+
+            // Prevent history from growing too large (keep last 20 messages / 10 turns)
+            if (chatHistory.current.length > 20) {
+                chatHistory.current = chatHistory.current.slice(-20);
             }
 
             const genAI = new GoogleGenerativeAI(apiKey);
@@ -66,54 +81,123 @@ const ChatEscolaPos = () => {
                 systemInstruction: SYSTEM_MESSAGE
             });
 
-            const result = await model.generateContent(params.userInput);
-            const responseText = result.response.text();
+            // Start chat with history (excluding the current user input which will be sent via stream)
+            const chat = model.startChat({
+                history: chatHistory.current.slice(0, -1)
+            });
 
-            await params.injectMessage(formatMessageText(responseText));
+            const result = await chat.sendMessageStream(params.userInput);
+            let text = "";
+
+            for await (const chunk of result.stream) {
+                const chunkText = chunk.text();
+                text += chunkText;
+                await params.streamMessage(formatMessageText(text));
+            }
+            await params.endStreamMessage();
+
+            // Store model response in history
+            chatHistory.current.push({
+                role: "model",
+                parts: [{ text: text }]
+            });
         } catch (error: any) {
-            console.error("Erro detalhado do Gemini:", error);
+            console.error("Erro no Gemini Stream:", error);
             const errorMsg = error.message || "erro desconhecido";
+            // Clean up history by removing failed user input
+            chatHistory.current.pop();
             await params.injectMessage(`Desculpe, tive um problema técnico ao processar sua dúvida (${errorMsg}).`);
         }
     };
 
     const flow = {
-
         start: {
-            message: "Olá! 👋\n\nSeja bem-vindo(a) à Escola de Pós-Graduação da UFG. Sou a Ana, sua assistente virtual.",
-            
-            path: "identifica_aluno"
-        },
-
-        identifica_aluno: {
-            message: "Como posso ajudar você hoje?",
-            transition: { duration: 0 },
-            options: ["Já sou aluno", "Desejo ser aluno"],
+            message: "Olá! 👋\n\nSeja bem-vindo(a) à Escola de Pós-Graduação da UFG. Sou a Ana, sua assistente virtual especializada em tirar dúvidas sobre nossos cursos, inscrições, pagamentos e regulamentos.\n\nComo posso ajudar você hoje?",
+            options: ["Sou Aluno", "Desejo ser Aluno", "Conversar com a Ana (IA)"],
             path: (params: any) => {
-                if (params.userInput === "Já sou aluno") {
+                const input = params.userInput.trim();
+                if (input === "Sou Aluno") {
                     return "aluno_menu";
                 }
-                if (params.userInput === "Desejo ser aluno") {
+                else if (input === "Desejo ser Aluno") {
                     return "novo_aluno_menu";
-                }   
-                return "gemini_query";
-            }
-        },
-        gemini_query: {
-            message: "Deixe-me consultar essa informação para você...",
-            transition: { duration: 1000 },
-            path: async (params: any) => {
-                await handleGemini(params);
-                return "restart";
+                }
+                else if (input === "Conversar com a Ana (IA)") {
+                    return "conversar_ia_intro";
+                }
+                return "gemini_loop";
             }
         },
 
+        menu_principal_redirect: {
+            message: "Retornando ao menu principal. Escolha uma opção:",
+            options: ["Sou Aluno", "Desejo ser Aluno", "Conversar com a Ana (IA)"],
+            path: (params: any) => {
+                const input = params.userInput.trim();
+                if (input === "Sou Aluno") {
+                    return "aluno_menu";
+                }
+                if (input === "Desejo ser Aluno") {
+                    return "novo_aluno_menu";
+                }
+                if (input === "Conversar com a Ana (IA)") {
+                    return "conversar_ia_intro";
+                }
+                return "gemini_loop";
+            }
+        },
 
-        
+        conversar_ia_intro: {
+            message: "Ótimo! Pode digitar qualquer pergunta ou dúvida sobre a pós-graduação da UFG, e eu farei o possível para te ajudar. 💬",
+            path: "gemini_loop"
+        },
+
+        gemini_loop: {
+            message: async (params: any) => {
+                await handleGeminiStream(params);
+            },
+            options: ["Menu Principal", "Falar com a Ana (IA)", "Ver Cursos", "Encerrar Atendimento"],
+            path: (params: any) => {
+                const input = params.userInput;
+                if (input === "Menu Principal") {
+                    return "menu_principal_redirect";
+                }
+                if (input === "Falar com a Ana (IA)") {
+                    return "conversar_ia_intro";
+                }
+                if (input === "Ver Cursos") {
+                    return "cursos_menu";
+                }
+                if (input === "Encerrar Atendimento") {
+                    return "end";
+                }
+                return "gemini_loop";
+            }
+        },
+
+        pos_resposta_options: {
+            message: "Como gostaria de prosseguir?",
+            options: ["Voltar ao Menu Principal", "Falar com a Ana (IA)", "Ver Cursos", "Encerrar Atendimento"],
+            path: (params: any) => {
+                const input = params.userInput;
+                if (input === "Voltar ao Menu Principal") {
+                    return "menu_principal_redirect";
+                }
+                if (input === "Falar com a Ana (IA)") {
+                    return "conversar_ia_intro";
+                }
+                if (input === "Ver Cursos") {
+                    return "cursos_menu";
+                }
+                if (input === "Encerrar Atendimento") {
+                    return "end";
+                }
+                return "gemini_loop";
+            }
+        },
+
         // =========================
-
         // POTENCIAL ALUNO
-
         // =========================
 
         novo_aluno_menu: {
@@ -123,7 +207,8 @@ const ChatEscolaPos = () => {
                 "Sobre os cursos",
                 "Formas de pagamento",
                 "Modalidade dos cursos",
-                "Informações adicionais"
+                "Informações adicionais",
+                "Voltar ao Menu Principal"
             ],
             path: (params: any) => {
                 switch (params.userInput) {
@@ -137,20 +222,23 @@ const ChatEscolaPos = () => {
                         return "modalidade";
                     case "Informações adicionais":
                         return "informacoes_adicionais";
+                    case "Voltar ao Menu Principal":
+                        return "menu_principal_redirect";
                     default:
-                        return "gemini_query";
+                        return "gemini_loop";
                 }
             }
         },
 
         // INSCRIÇÃO
-
         inscricao_menu: {
             message: "Sobre inscrição e matrícula:",
             options: [
                 "Procedimento para inscrição",
                 "Documentação necessária",
-                "Pré-requisitos"
+                "Pré-requisitos",
+                "Voltar ao Menu Anterior",
+                "Voltar ao Menu Principal"
             ],
             path: (params: any) => {
                 switch (params.userInput) {
@@ -160,59 +248,45 @@ const ChatEscolaPos = () => {
                         return "documentacao";
                     case "Pré-requisitos":
                         return "pre_requisitos";
+                    case "Voltar ao Menu Anterior":
+                        return "novo_aluno_menu";
+                    case "Voltar ao Menu Principal":
+                        return "menu_principal_redirect";
                     default:
-                        return "gemini_query";
+                        return "gemini_loop";
                 }
             }
         },
+
         procedimento_inscricao: {
-
-            message:
-
-                "Para se inscrever, leia o edital do curso desejado e verifique os critérios de seleção.\n\n" +
-
+            message: "Para se inscrever, leia o edital do curso desejado e verifique os critérios de seleção.\n\n" +
                 "Depois, siga as orientações do edital para matrícula, incluindo pagamento da taxa e assinatura do contrato, quando aplicável.",
-
-            path: "restart"
-
+            path: "pos_resposta_options"
         },
 
         documentacao: {
-
-            message:
-
-                "Os documentos normalmente exigidos são:\n\n" +
-
+            message: "Os documentos normalmente exigidos são:\n\n" +
                 "• Documento de identificação (RG ou CNH)\n" +
-
                 "• Diploma de curso superior\n" +
-
                 "• Contrato ou termo de compromisso assinado",
-
-            path: "restart"
-
+            path: "pos_resposta_options"
         },
 
         pre_requisitos: {
-
-            message:
-
-                "Sim. Quem está no último semestre pode iniciar o processo usando comprovante de conclusão.\n\n" +
-
+            message: "Sim. Quem está no último semestre pode iniciar o processo usando comprovante de conclusão.\n\n" +
                 "O diploma deverá ser apresentado para efetivar a matrícula.",
-
-            path: "restart"
-
+            path: "pos_resposta_options"
         },
 
         // CURSOS
-
         cursos_menu: {
             message: "Sobre os cursos:",
             options: [
                 "Diferença entre lato sensu e stricto sensu",
                 "Periodicidade das aulas",
-                "Aproveitamento de disciplinas"
+                "Aproveitamento de disciplinas",
+                "Voltar ao Menu Anterior",
+                "Voltar ao Menu Principal"
             ],
             path: (params: any) => {
                 switch (params.userInput) {
@@ -222,115 +296,83 @@ const ChatEscolaPos = () => {
                         return "periodicidade";
                     case "Aproveitamento de disciplinas":
                         return "aproveitamento";
+                    case "Voltar ao Menu Anterior":
+                        return "novo_aluno_menu";
+                    case "Voltar ao Menu Principal":
+                        return "menu_principal_redirect";
                     default:
-                        return "gemini_query";
+                        return "gemini_loop";
                 }
             }
         },
+
         modalidades_pos: {
-
-            message:
-
-                "A pós-graduação lato sensu é voltada para especialização profissional.\n\n" +
-
+            message: "A pós-graduação lato sensu é voltada para especialização profissional.\n\n" +
                 "Já a stricto sensu é direcionada para pesquisa acadêmica, como mestrado e doutorado.",
-
-            path: "restart"
-
+            path: "pos_resposta_options"
         },
 
         periodicidade: {
-
-            message:
-
-                "A periodicidade varia conforme o curso.\n\n" +
-
+            message: "A periodicidade varia conforme o curso.\n\n" +
                 "As aulas podem ocorrer semanalmente, quinzenalmente ou mensalmente.",
-
-            path: "restart"
-
+            path: "pos_resposta_options"
         },
 
         aproveitamento: {
-
-            message:
-
-                "Disciplinas cursadas em outro curso lato sensu podem ser aproveitadas, desde que tenham sido concluídas há no máximo dois anos.",
-
-            path: "restart"
-
+            message: "Disciplinas cursadas in outro curso lato sensu podem ser aproveitadas, desde que tenham sido concluídas há no máximo dois anos.",
+            path: "pos_resposta_options"
         },
 
         // PAGAMENTO
-
         pagamento_menu: {
             message: "Sobre pagamentos:",
             options: [
                 "Condições de pagamento",
-                "Cursos gratuitos"
+                "Cursos gratuitos",
+                "Voltar ao Menu Anterior",
+                "Voltar ao Menu Principal"
             ],
             path: (params: any) => {
-                if (params.userInput === "Condições de pagamento") {
-                    return "formas_pagamento";
+                switch (params.userInput) {
+                    case "Condições de pagamento":
+                        return "formas_pagamento";
+                    case "Cursos gratuitos":
+                        return "gratuitos";
+                    case "Voltar ao Menu Anterior":
+                        return "novo_aluno_menu";
+                    case "Voltar ao Menu Principal":
+                        return "menu_principal_redirect";
+                    default:
+                        return "gemini_loop";
                 }
-                if (params.userInput === "Cursos gratuitos") {
-                    return "gratuitos";
-                }
-                return "gemini_query";
             }
         },
+
         formas_pagamento: {
-
-            message:
-
-                "Os cursos podem ser pagos por:\n\n" +
-
-                "• Boleto bancário\n" +
-
-                "• Pix",
-
-            path: "restart"
-
+            message: "Os cursos podem ser pagos por:\n\n• Boleto bancário\n• Pix",
+            path: "pos_resposta_options"
         },
 
         gratuitos: {
-
-            message:
-
-                "Sim. Alguns cursos oferecidos pela Escola de Pós UFG são gratuitos.\n\n" +
-
-                "Consulte a página do curso para verificar disponibilidade.",
-
-            path: "restart"
-
+            message: "Sim. Alguns cursos oferecidos pela Escola de Pós UFG são gratuitos.\n\nConsulte a página do curso para verificar disponibilidade.",
+            path: "pos_resposta_options"
         },
 
         // MODALIDADE
-
         modalidade: {
-
-            message:
-
-                "A Escola de Pós UFG oferece cursos:\n\n" +
-
-                "• Presenciais\n" +
-
-                "• Híbridos\n" +
-
-                "• EAD",
-
-            path: "restart"
-
+            message: "A Escola de Pós UFG oferece cursos:\n\n• Presenciais\n• Híbridos\n• EAD",
+            path: "pos_resposta_options"
         },
 
         // INFORMAÇÕES ADICIONAIS
-
         informacoes_adicionais: {
             message: "Selecione uma opção:",
             options: [
                 "Detalhes de um curso",
                 "Bolsas de estudo",
-                "Diploma tecnólogo"
+                "Diploma tecnólogo",
+                "Voltar ao Menu Anterior",
+                "Voltar ao Menu Principal"
             ],
             path: (params: any) => {
                 switch (params.userInput) {
@@ -340,45 +382,33 @@ const ChatEscolaPos = () => {
                         return "bolsas";
                     case "Diploma tecnólogo":
                         return "tecnologo";
+                    case "Voltar ao Menu Anterior":
+                        return "novo_aluno_menu";
+                    case "Voltar ao Menu Principal":
+                        return "menu_principal_redirect";
                     default:
-                        return "gemini_query";
+                        return "gemini_loop";
                 }
             }
         },
+
         curso_especifico: {
-
-            message:
-
-                "Você pode consultar a página oficial do curso ou entrar em contato com a Escola de Pós UFG por telefone, WhatsApp ou e-mail.",
-
-            path: "restart"
-
+            message: "Você pode consultar a página oficial do curso ou entrar em contato com a Escola de Pós UFG por telefone, WhatsApp ou e-mail.",
+            path: "pos_resposta_options"
         },
 
         bolsas: {
-
-            message:
-
-                "Alguns cursos oferecem bolsas ou isenção de mensalidades para servidores da UFG e grupos minorizados, conforme previsto em edital.",
-
-            path: "restart"
-
+            message: "Alguns cursos oferecem bolsas ou isenção de mensalidades para servidores da UFG e grupos minorizados, conforme previsto em edital.",
+            path: "pos_resposta_options"
         },
 
         tecnologo: {
-
-            message:
-
-                "Sim. Diplomas de cursos superiores de tecnologia são aceitos para MBA e pós-graduação.",
-
-            path: "restart"
-
+            message: "Sim. Diplomas de cursos superiores de tecnologia são aceitos para MBA e pós-graduação.",
+            path: "pos_resposta_options"
         },
 
         // =========================
-
         // ALUNO
-
         // =========================
 
         aluno_menu: {
@@ -390,7 +420,8 @@ const ChatEscolaPos = () => {
                 "Comunicação com professor",
                 "Matrícula",
                 "Requisitos acadêmicos",
-                "Certificação"
+                "Certificação",
+                "Voltar ao Menu Principal"
             ],
             path: (params: any) => {
                 switch (params.userInput) {
@@ -408,177 +439,84 @@ const ChatEscolaPos = () => {
                         return "requisitos";
                     case "Certificação":
                         return "certificacao";
+                    case "Voltar ao Menu Principal":
+                        return "menu_principal_redirect";
                     default:
-                        return "gemini_query";
+                        return "gemini_loop";
                 }
             }
         },
+
         trancamento: {
-
-            message:
-
-                "Não há possibilidade de trancamento de matrícula, conforme o Regulamento Geral da Pós-Graduação Lato Sensu da UFG.",
-
-            path: "restart"
-
+            message: "Não há possibilidade de trancamento de matrícula, conforme o Regulamento Geral da Pós-Graduação Lato Sensu da UFG.",
+            path: "pos_resposta_options"
         },
 
         mudanca: {
-
-            message:
-
-                "Sim. É possível mudar de curso, desde que você participe do processo seletivo do novo curso e siga as regras do edital.",
-
-            path: "restart"
-
+            message: "Sim. É possível mudar de curso, desde que você participe do processo seletivo do novo curso e siga as regras do edital.",
+            path: "pos_resposta_options"
         },
 
         cancelamento: {
-
-            message:
-
-                "Sim. O cancelamento pode ser realizado conforme as regras previstas em contrato.",
-
-            path: "restart"
-
+            message: "Sim. O cancelamento pode ser realizado conforme as regras previstas em contrato.",
+            path: "pos_resposta_options"
         },
 
         comunicacao: {
-
-            message:
-
-                "Os alunos podem entrar em contato com professores pelo sistema acadêmico, e-mail ou ambiente virtual de aprendizagem.",
-
-            path: "restart"
-
+            message: "Os alunos podem entrar em contato com professores pelo sistema acadêmico, e-mail ou ambiente virtual de aprendizagem.",
+            path: "pos_resposta_options"
         },
 
         matricula: {
-
-            message:
-
-                "Para dúvidas sobre matrícula, entre em contato com a coordenação do curso pelo e-mail disponível na página oficial.",
-
-            path: "restart"
-
+            message: "Para dúvidas sobre matrícula, entre em contato com a coordenação do curso pelo e-mail disponível na página oficial.",
+            path: "pos_resposta_options"
         },
 
         requisitos: {
-
-            message:
-
-                "Os requisitos acadêmicos normalmente incluem:\n\n" +
-
-                "• Frequência mínima de 75%\n" +
-
-                "• Nota mínima 7,0\n" +
-
-                "• Aprovação no TCC, quando obrigatório",
-
-            path: "restart"
-
+            message: "Os requisitos acadêmicos normalmente incluem:\n\n• Frequência mínima de 75%\n• Nota mínima 7,0\n• Aprovação no TCC, quando obrigatório",
+            path: "pos_resposta_options"
         },
 
         certificacao: {
-
-            message:
-
-                "Para solicitar o certificado de conclusão, entre em contato com a coordenação do curso e verifique se todos os requisitos acadêmicos foram atendidos.",
-
-            path: "restart"
-
+            message: "Para solicitar o certificado de conclusão, entre em contato com a coordenação do curso e verifique se todos os requisitos acadêmicos foram atendidos.",
+            path: "pos_resposta_options"
         },
 
-        // =========================
-
-        // REINICIAR
-
-        // =========================
-
-        restart: {
-            message: "Posso ajudar em mais alguma coisa?",
-            options: [
-                "Sim",
-                "Não"
-            ],
-            path: (params: any) => {
-                if (params.userInput === "Sim") {
-                    return "start";
-                }
-                if (params.userInput === "Não") {
-                    return "end";
-                }
-                return "gemini_query";
-            }
-        },
         end: {
-
-            message:
-
-                "Obrigado pelo contato 😊\n\n" +
-
-                "A Escola de Pós-Graduação da UFG deseja muito sucesso na sua trajetória acadêmica e profissional.",
-
-            chatDisabled: true
-
+            message: "Obrigado pelo contato 😊\n\nA Escola de Pós-Graduação da UFG deseja muito sucesso na sua trajetória acadêmica e profissional.",
+            options: ["Reiniciar Atendimento"],
+            path: "start"
         }
-
     };
 
     const settings = {
-
         general: {
-
             embedded: true,
-
             primaryColor: "#003366",
-
             secondaryColor: "#0055AA",
-
             showFooter: false
-
         },
-
         header: {
-
             title: "Escola de Pós UFG",
-
             showAvatar: true
-
         },
-
         botBubble: {
-
             simulateStream: false
-
         },
-
         notification: {
-
             disabled: true
-
         },
-
         chatInput: {
-
             enabledPlaceholderText: "Digite sua dúvida..."
-
         }
-
     };
 
     return (
-
         <ChatBot
-
             settings={settings}
-
             flow={flow}
-
         />
-
     );
-
 };
 
 export default ChatEscolaPos;
