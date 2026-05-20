@@ -1,0 +1,153 @@
+/* 
+  Estilo personalizado para o Chatbot d'Aurora/dEnodare 
+  Inspirado no design 3D, cores Teal (#3FB8AF) e Orange (#FF7C33) do site.
+*/
+
+:root {
+  --rcb-primary-teal: #3fb8af;
+  --rcb-secondary-teal: #4ecdc4;
+  --rcb-accent-orange: #ff7c33;
+  --rcb-bg-light: #f8fcfb;
+  --rcb-bot-msg-bg: #e0f2f1;
+  --rcb-user-msg-bg: #ff7c33;
+  --rcb-shadow-3d: 0 10px 25px -5px rgba(63, 184, 175, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --rcb-border-radius: 18px;
+}
+
+/* Container principal com efeito 3D */
+.rcb-chatbot-container {
+  border-radius: var(--rcb-border-radius) !important;
+  box-shadow: var(--rcb-shadow-3d) !important;
+  overflow: hidden;
+  border: 1px solid rgba(63, 184, 175, 0.1) !important;
+  background-color: var(--rcb-bg-light) !important;
+  font-family: 'Inter', 'Segoe UI', Roboto, sans-serif !important;
+}
+
+/* Header estilizado */
+.rcb-chat-header {
+  /* background: linear-gradient(135deg, var(--rcb-primary-teal), var(--rcb-secondary-teal)) !important; */
+  color: white !important;
+  padding: 15px !important;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.rcb-chat-header h3 {
+  font-weight: 700 !important;
+  font-size: 1.1rem !important;
+  letter-spacing: -0.02em !important;
+  margin: 0 !important;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+/* Avatares 3D-like */
+.rcb-message-bot-avatar,
+.rcb-bot-avatar {
+  background: white url("../assets/bot.svg") no-repeat center !important;
+  background-size: 70% !important;
+  box-shadow: 0 4px 10px rgba(63, 184, 175, 0.3) !important;
+  border: 2px solid white !important;
+}
+
+.rcb-message-user-avatar {
+  background: linear-gradient(135deg, var(--rcb-accent-orange), #d45d1d) !important;
+  box-shadow: 0 4px 10px rgba(255, 124, 51, 0.3) !important;
+  border: 2px solid white !important;
+}
+
+/* Bolhas de Mensagem */
+.rcb-bot-message {
+  background-color: white !important;
+  color: #333 !important;
+  border-radius: 0 15px 15px 15px !important;
+  border: 1px solid rgba(63, 184, 175, 0.1) !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
+  padding: 12px 16px !important;
+  font-size: 0.95rem !important;
+  line-height: 1.5 !important;
+}
+
+.rcb-user-message {
+  background: linear-gradient(135deg, var(--rcb-accent-orange), #ff9157) !important;
+  color: white !important;
+  border-radius: 15px 15px 0 15px !important;
+  box-shadow: 0 4px 15px rgba(255, 124, 51, 0.2) !important;
+  padding: 12px 16px !important;
+  font-weight: 500 !important;
+}
+
+/* Janela de Chat */
+.rcb-chat-window {
+  background-color: var(--rcb-bg-light) !important;
+}
+
+/* Input Area */
+.rcb-chat-input {
+  background-color: white !important;
+  border-top: 1px solid rgba(63, 184, 175, 0.1) !important;
+  padding: 10px 15px !important;
+}
+
+.rcb-chat-input-textarea {
+  background-color: #f0f7f6 !important;
+  border: 1px solid rgba(63, 184, 175, 0.2) !important;
+  border-radius: 12px !important;
+  color: #333 !important;
+  padding: 8px 12px !important;
+  transition: all 0.3s ease !important;
+}
+
+.rcb-chat-input-textarea:focus {
+  border-color: var(--rcb-primary-teal) !important;
+  box-shadow: 0 0 0 3px rgba(63, 184, 175, 0.1) !important;
+}
+
+/* Botão de Enviar com efeito 3D ao clicar */
+.rcb-send-button {
+  background: var(--rcb-primary-teal) !important;
+  border-radius: 10px !important;
+  margin-left: 8px !important;
+  transition: transform 0.1s, background 0.3s !important;
+  box-shadow: 0 4px 0 #2d8b84 !important;
+  /* Efeito de profundidade */
+}
+
+.rcb-send-button:hover {
+  background: #36a39b !important;
+}
+
+.rcb-send-button:active {
+  transform: translateY(2px) !important;
+  box-shadow: 0 2px 0 #2d8b84 !important;
+}
+
+/* Customização dos Botões de Opção (se houver) */
+.rcb-options-container button {
+  background-color: white !important;
+  border: 2px solid var(--rcb-primary-teal) !important;
+  color: var(--rcb-primary-teal) !important;
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  transition: all 0.2s !important;
+  box-shadow: 0 3px 0 var(--rcb-primary-teal) !important;
+}
+
+.rcb-options-container button:hover {
+  background-color: var(--rcb-primary-teal) !important;
+  color: white !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 0 #2d8b84 !important;
+}
+
+.rcb-options-container button:active {
+  transform: translateY(2px) !important;
+  box-shadow: 0 1px 0 #2d8b84 !important;
+}
+
+/* Tooltip do chat */
+.rcb-chat-tooltip {
+  background-color: var(--rcb-primary-teal) !important;
+  border-radius: 12px !important;
+  padding: 8px 12px !important;
+  box-shadow: 0 5px 15px rgba(63, 184, 175, 0.3) !important;
+}
