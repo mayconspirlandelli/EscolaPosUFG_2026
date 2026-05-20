@@ -492,8 +492,8 @@ const ChatEscolaPos = () => {
     const settings = {
         general: {
             embedded: true,
-            primaryColor: "#003366",
-            secondaryColor: "#0055AA",
+            primaryColor: "#1A1A1A",
+            secondaryColor: "#1A1A1A",
             showFooter: false
         },
         header: {

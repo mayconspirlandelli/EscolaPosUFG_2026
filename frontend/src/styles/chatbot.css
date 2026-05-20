@@ -4,12 +4,12 @@
 */
 
 :root {
-  --rcb-primary-teal: #3fb8af;
-  --rcb-secondary-teal: #4ecdc4;
-  --rcb-accent-orange: #ff7c33;
+  --rcb-primary-teal: #CAB779;
+  --rcb-secondary-teal: #000000;
+  --rcb-accent-orange: #CAB779;
   --rcb-bg-light: #f8fcfb;
   --rcb-bot-msg-bg: #e0f2f1;
-  --rcb-user-msg-bg: #ff7c33;
+  --rcb-user-msg-bg: #CAB779;
   --rcb-shadow-3d: 0 10px 25px -5px rgba(63, 184, 175, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
   --rcb-border-radius: 18px;
 }
@@ -68,7 +68,7 @@
 }
 
 .rcb-user-message {
-  background: linear-gradient(135deg, var(--rcb-accent-orange), #ff9157) !important;
+  background: linear-gradient(135deg, var(--rcb-accent-orange), #FF9742) !important;
   color: white !important;
   border-radius: 15px 15px 0 15px !important;
   box-shadow: 0 4px 15px rgba(255, 124, 51, 0.2) !important;
@@ -108,17 +108,17 @@
   border-radius: 10px !important;
   margin-left: 8px !important;
   transition: transform 0.1s, background 0.3s !important;
-  box-shadow: 0 4px 0 #2d8b84 !important;
+  box-shadow: 0 4px 0 #CAB779 !important;
   /* Efeito de profundidade */
 }
 
 .rcb-send-button:hover {
-  background: #36a39b !important;
+  background: #000000 !important;
 }
 
 .rcb-send-button:active {
   transform: translateY(2px) !important;
-  box-shadow: 0 2px 0 #2d8b84 !important;
+  box-shadow: 0 2px 0 #CAB779 !important;
 }
 
 /* Customização dos Botões de Opção (se houver) */
@@ -136,12 +136,12 @@
   background-color: var(--rcb-primary-teal) !important;
   color: white !important;
   transform: translateY(-1px) !important;
-  box-shadow: 0 4px 0 #2d8b84 !important;
+  box-shadow: 0 4px 0 #CAB779 !important;
 }
 
 .rcb-options-container button:active {
   transform: translateY(2px) !important;
-  box-shadow: 0 1px 0 #2d8b84 !important;
+  box-shadow: 0 1px 0 #CAB779 !important;
 }
 
 /* Tooltip do chat */
