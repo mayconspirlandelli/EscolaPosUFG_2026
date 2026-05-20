@@ -1,45 +1,110 @@
 import ChatBot from "react-chatbotify";
-
 import "@/styles/chatbot.css";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const ChatEscolaPos = () => {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const modelName = import.meta.env.VITE_GEMINI_MODEL || "gemini-1.5-flash";
+
+    const CONTEXT = `
+        - Inscrição e matrícula: ler edital, critérios de seleção, pagamento de taxa, assinatura de contrato.
+        - Documentos: RG ou CNH, Diploma de curso superior, Contrato ou termo de compromisso assinado.
+        - Pós-graduação: lato sensu (especialização profissional) e stricto sensu (pesquisa/mestrado/doutorado).
+        - Periodicidade: semanal, quinzenal ou mensal.
+        - Aproveitamento: disciplinas concluídas há no máximo dois anos.
+        - Pagamento: Boleto bancário ou Pix.
+        - Gratuidade: alguns cursos são gratuitos, verificar na página do curso.
+        - Modalidade: Presencial, Híbrido e EAD.
+        - Detalhes do curso: consultar página oficial ou contatos (telefone, WhatsApp, e-mail).
+        - Bolsas: disponíveis para servidores UFG e grupos minorizados conforme edital.
+        - Tecnólogo: diplomas são aceitos para MBA e pós-graduação.
+        - Trancamento: não é possível trancamento de matrícula em Lato Sensu na UFG.
+        - Mudança de curso: possível via novo processo seletivo.
+        - Cancelamento: conforme regras previstas em contrato.
+        - Comunicação: via sistema acadêmico, e-mail ou ambiente virtual de aprendizagem.
+        - Requisitos acadêmicos: frequência mínima de 75%, nota mínima 7,0 e aprovação no TCC (se obrigatório).
+        - Certificação: solicitar à coordenação após atender requisitos.
+    `;
+
+    const SYSTEM_MESSAGE = 
+        "Você é um assistente virtual chamado Ana especializado na Escola de Pós-Graduação da UFG e na UFG.\n\n" +
+        "Instruções:\n" +
+        "1. Seja direto: Dê respostas curtas e informativas.\n" +
+        "2. Mantenha o foco: Responda apenas sobre a Escola de Pós-Graduação da UFG ou a UFG.\n" +
+        "3. Se a pergunta não for sobre esses temas, direcione o usuário educadamente para os temas que você domina.\n" +
+        "4. Use APENAS o contexto fornecido abaixo para responder.\n" +
+        "5. Se a informação não estiver no contexto, diga que não sabe informar e sugira contactar a secretaria.\n\n" +
+        "CONTEXTO:\n" + CONTEXT;
+
+    const formatMessageText = (text: string) => {
+        if (!text) return "";
+        const parts = text.split("**");
+        return (
+            <span style={{ whiteSpace: "pre-wrap" }}>
+                {parts.map((part, index) => {
+                    if (index % 2 !== 0) {
+                        return <strong key={index}>{part}</strong>;
+                    }
+                    return part;
+                })}
+            </span>
+        );
+    };
+
+    const handleGemini = async (params: any) => {
+        try {
+            console.log("Iniciando chamada ao Gemini...");
+            if (!apiKey) {
+                console.error("VITE_GEMINI_API_KEY não encontrada.");
+                await params.injectMessage("Erro: Chave de API não configurada corretamente.");
+                return;
+            }
+
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({
+                model: modelName,
+                systemInstruction: SYSTEM_MESSAGE
+            });
+
+            const result = await model.generateContent(params.userInput);
+            const responseText = result.response.text();
+
+            await params.injectMessage(formatMessageText(responseText));
+        } catch (error: any) {
+            console.error("Erro detalhado do Gemini:", error);
+            const errorMsg = error.message || "erro desconhecido";
+            await params.injectMessage(`Desculpe, tive um problema técnico ao processar sua dúvida (${errorMsg}).`);
+        }
+    };
 
     const flow = {
 
         start: {
-
-            message:
-
-                "Olá! 👋\n\n" +
-
-                "Seja bem-vindo(a) à Escola de Pós-Graduação da UFG.\n\n" +
-
-                "Chegar até aqui já demonstra seu interesse em expandir horizontes e transformar sua carreira profissional.\n\n" +
-
-                "Como posso ajudar você hoje?",
-
-            options: [
-
-                "Já sou aluno",
-
-                "Desejo ser aluno"
-
-            ],
-
+            message: (params: any) => {
+                return `Olá! 👋\n\nSeja bem-vindo(a) à Escola de Pós-Graduação da UFG.\n\nComo posso ajudar você hoje?`;
+            },
+            options: ["Já sou aluno", "Desejo ser aluno"],
             path: (params: any) => {
-
                 if (params.userInput === "Já sou aluno") {
-
                     return "aluno_menu";
-
                 }
-
-                return "novo_aluno_menu";
-
+                if (params.userInput === "Desejo ser aluno") {
+                    return "novo_aluno_menu";
+                }   
+                return "gemini_query";
             }
-
+        },
+        gemini_query: {
+            message: "Deixe-me consultar essa informação para você...",
+            transition: { duration: 1000 },
+            path: async (params: any) => {
+                await handleGemini(params);
+                return "restart";
+            }
         },
 
+
+        
         // =========================
 
         // POTENCIAL ALUNO
@@ -47,91 +112,54 @@ const ChatEscolaPos = () => {
         // =========================
 
         novo_aluno_menu: {
-
             message: "Selecione uma opção:",
-
             options: [
-
                 "Inscrição e matrícula",
-
                 "Sobre os cursos",
-
                 "Formas de pagamento",
-
                 "Modalidade dos cursos",
-
                 "Informações adicionais"
-
             ],
-
             path: (params: any) => {
-
                 switch (params.userInput) {
-
                     case "Inscrição e matrícula":
-
                         return "inscricao_menu";
-
                     case "Sobre os cursos":
-
                         return "cursos_menu";
-
                     case "Formas de pagamento":
-
                         return "pagamento_menu";
-
                     case "Modalidade dos cursos":
-
                         return "modalidade";
-
-                    default:
-
+                    case "Informações adicionais":
                         return "informacoes_adicionais";
-
+                    default:
+                        return "gemini_query";
                 }
-
             }
-
         },
 
         // INSCRIÇÃO
 
         inscricao_menu: {
-
             message: "Sobre inscrição e matrícula:",
-
             options: [
-
                 "Procedimento para inscrição",
-
                 "Documentação necessária",
-
                 "Pré-requisitos"
-
             ],
-
             path: (params: any) => {
-
                 switch (params.userInput) {
-
                     case "Procedimento para inscrição":
-
                         return "procedimento_inscricao";
-
                     case "Documentação necessária":
-
                         return "documentacao";
-
-                    default:
-
+                    case "Pré-requisitos":
                         return "pre_requisitos";
-
+                    default:
+                        return "gemini_query";
                 }
-
             }
-
         },
-
         procedimento_inscricao: {
 
             message:
@@ -175,41 +203,25 @@ const ChatEscolaPos = () => {
         // CURSOS
 
         cursos_menu: {
-
             message: "Sobre os cursos:",
-
             options: [
-
                 "Diferença entre lato sensu e stricto sensu",
-
                 "Periodicidade das aulas",
-
                 "Aproveitamento de disciplinas"
-
             ],
-
             path: (params: any) => {
-
                 switch (params.userInput) {
-
                     case "Diferença entre lato sensu e stricto sensu":
-
                         return "modalidades_pos";
-
                     case "Periodicidade das aulas":
-
                         return "periodicidade";
-
-                    default:
-
+                    case "Aproveitamento de disciplinas":
                         return "aproveitamento";
-
+                    default:
+                        return "gemini_query";
                 }
-
             }
-
         },
-
         modalidades_pos: {
 
             message:
@@ -247,31 +259,21 @@ const ChatEscolaPos = () => {
         // PAGAMENTO
 
         pagamento_menu: {
-
             message: "Sobre pagamentos:",
-
             options: [
-
                 "Condições de pagamento",
-
                 "Cursos gratuitos"
-
             ],
-
             path: (params: any) => {
-
                 if (params.userInput === "Condições de pagamento") {
-
                     return "formas_pagamento";
-
                 }
-
-                return "gratuitos";
-
+                if (params.userInput === "Cursos gratuitos") {
+                    return "gratuitos";
+                }
+                return "gemini_query";
             }
-
         },
-
         formas_pagamento: {
 
             message:
@@ -319,41 +321,25 @@ const ChatEscolaPos = () => {
         // INFORMAÇÕES ADICIONAIS
 
         informacoes_adicionais: {
-
             message: "Selecione uma opção:",
-
             options: [
-
                 "Detalhes de um curso",
-
                 "Bolsas de estudo",
-
                 "Diploma tecnólogo"
-
             ],
-
             path: (params: any) => {
-
                 switch (params.userInput) {
-
                     case "Detalhes de um curso":
-
                         return "curso_especifico";
-
                     case "Bolsas de estudo":
-
                         return "bolsas";
-
-                    default:
-
+                    case "Diploma tecnólogo":
                         return "tecnologo";
-
+                    default:
+                        return "gemini_query";
                 }
-
             }
-
         },
-
         curso_especifico: {
 
             message:
@@ -391,65 +377,37 @@ const ChatEscolaPos = () => {
         // =========================
 
         aluno_menu: {
-
             message: "Selecione sua dúvida:",
-
             options: [
-
                 "Trancamento",
-
                 "Mudança de curso",
-
                 "Cancelamento",
-
                 "Comunicação com professor",
-
                 "Matrícula",
-
                 "Requisitos acadêmicos",
-
                 "Certificação"
-
             ],
-
             path: (params: any) => {
-
                 switch (params.userInput) {
-
                     case "Trancamento":
-
                         return "trancamento";
-
                     case "Mudança de curso":
-
                         return "mudanca";
-
                     case "Cancelamento":
-
                         return "cancelamento";
-
                     case "Comunicação com professor":
-
                         return "comunicacao";
-
                     case "Matrícula":
-
                         return "matricula";
-
                     case "Requisitos acadêmicos":
-
                         return "requisitos";
-
-                    default:
-
+                    case "Certificação":
                         return "certificacao";
-
+                    default:
+                        return "gemini_query";
                 }
-
             }
-
         },
-
         trancamento: {
 
             message:
@@ -533,31 +491,21 @@ const ChatEscolaPos = () => {
         // =========================
 
         restart: {
-
             message: "Posso ajudar em mais alguma coisa?",
-
             options: [
-
                 "Sim",
-
                 "Não"
-
             ],
-
             path: (params: any) => {
-
                 if (params.userInput === "Sim") {
-
                     return "start";
-
                 }
-
-                return "end";
-
+                if (params.userInput === "Não") {
+                    return "end";
+                }
+                return "gemini_query";
             }
-
         },
-
         end: {
 
             message:
