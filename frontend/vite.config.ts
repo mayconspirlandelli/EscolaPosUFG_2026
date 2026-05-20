@@ -13,12 +13,16 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  preview: {
-    allowedHosts: ["frontend-chatbot-production-f8f6.up.railway.app"],
-  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+  },
+  server: {
+    host: true,
+  },
+  preview: {
+    host: true,
+    allowedHosts: true,
   },
 })

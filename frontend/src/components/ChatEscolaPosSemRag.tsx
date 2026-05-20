@@ -3,97 +3,7 @@ import "@/styles/chatbot.css";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { useRef } from "react";
 
-// @ts-ignore
-import csvContent from "../informacoe_escola_pos.csv?raw";
-
-// Robust CSV Parser (RFC 4180 compliant for quotes, commas, and newlines)
-const parseCSV = (text: string): Array<[string, string]> => {
-    const lines: Array<[string, string]> = [];
-    let row: string[] = [];
-    let col = "";
-    let inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        const nextChar = text[i + 1];
-        if (char === '"') {
-            if (inQuotes && nextChar === '"') {
-                col += '"';
-                i++; // Skip next quote
-            } else {
-                inQuotes = !inQuotes;
-            }
-        } else if (char === ',' && !inQuotes) {
-            row.push(col.trim());
-            col = "";
-        } else if ((char === '\r' || char === '\n') && !inQuotes) {
-            if (char === '\r' && nextChar === '\n') {
-                i++;
-            }
-            row.push(col.trim());
-            if (row.length > 0 && (row[0] || row[1])) {
-                lines.push([row[0] || "", row[1] || ""]);
-            }
-            row = [];
-            col = "";
-        } else {
-            col += char;
-        }
-    }
-    if (col || row.length > 0) {
-        row.push(col.trim());
-        lines.push([row[0] || "", row[1] || ""]);
-    }
-    // Filter header row (PERGUNTAS, RESPOSTAS)
-    return lines.filter(line => line[0].toUpperCase() !== "PERGUNTAS" || line[1].toUpperCase() !== "RESPOSTAS");
-};
-
-const csvData = parseCSV(csvContent);
-
-// Simple token-based keyword matching RAG
-const searchRAG = (query: string, data: Array<[string, string]>, limit = 4): string => {
-    const getTokens = (text: string) => {
-        return text
-            .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "") // Remove accents
-            .replace(/[^a-z0-9\s]/g, "")     // Remove special characters
-            .split(/\s+/)
-            .filter(word => word.length > 2); // Filter out short words
-    };
-
-    const queryTokens = getTokens(query);
-    if (queryTokens.length === 0) return "";
-
-    const scored = data.map(([question, answer]) => {
-        const qTokens = getTokens(question);
-        const aTokens = getTokens(answer);
-
-        let score = 0;
-        queryTokens.forEach(token => {
-            if (qTokens.includes(token)) {
-                score += 3; // Match in Title/Question gets higher weight
-            }
-            if (aTokens.includes(token)) {
-                score += 1; // Match in body gets lower weight
-            }
-        });
-
-        return { question, answer, score };
-    });
-
-    const topMatches = scored
-        .filter(item => item.score > 0)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, limit);
-
-    if (topMatches.length === 0) return "";
-
-    return topMatches
-        .map(item => `Pergunta/Tema: ${item.question}\nInformações: ${item.answer}`)
-        .join("\n\n---\n\n");
-};
-
-const ChatEscolaPos = () => {
+const ChatEscolaPosSemRag = () => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     const modelName = import.meta.env.VITE_GEMINI_MODEL || "gemini-1.5-flash";
 
@@ -119,6 +29,16 @@ const ChatEscolaPos = () => {
         - Requisitos acadêmicos: frequência mínima de 75%, nota mínima 7,0 e aprovação no TCC (se obrigatório).
         - Certificação: solicitar à coordenação após atender requisitos.
     `;
+
+    const SYSTEM_MESSAGE =
+        "Você é um assistente virtual chamado Ana especializado na Escola de Pós-Graduação da UFG e na UFG.\n\n" +
+        "Instruções:\n" +
+        "1. Seja direto: Dê respostas curtas e informativas.\n" +
+        "2. Mantenha o foco: Responda apenas sobre a Escola de Pós-Graduação da UFG ou a UFG.\n" +
+        "3. Se a pergunta não for sobre esses temas, direcione o usuário educadamente para os temas que você domina.\n" +
+        "4. Use APENAS o contexto fornecido abaixo para responder.\n" +
+        "5. Se a informação não estiver no contexto, diga que não sabe informar e sugira contactar a secretaria.\n\n" +
+        "CONTEXTO:\n" + CONTEXT;
 
     const formatMessageText = (text: string) => {
         if (!text) return "";
@@ -155,25 +75,10 @@ const ChatEscolaPos = () => {
                 chatHistory.current = chatHistory.current.slice(-20);
             }
 
-            // Retrieve dynamic context using RAG
-            const retrievedContext = searchRAG(params.userInput, csvData);
-            console.log("RAG Contexto Recuperado:", retrievedContext);
-
-            const dynamicSystemInstruction =
-                "Você é um assistente virtual chamado Ana especializado na Escola de Pós-Graduação da UFG e na UFG.\n\n" +
-                "Instruções:\n" +
-                "1. Seja direto: Dê respostas curtas e informativas.\n" +
-                "2. Mantenha o foco: Responda apenas sobre a Escola de Pós-Graduação da UFG ou a UFG.\n" +
-                "3. Se a pergunta não for sobre esses temas, direcione o usuário educadamente para os temas que você domina.\n" +
-                "4. Use prioritariamente as informações adicionais do CONTEXTO DINÂMICO abaixo para responder.\n" +
-                "5. Se a informação não puder ser respondida com o contexto geral ou com o contexto dinâmico, diga de forma simpática que não tem essa informação no momento e sugira entrar em contato com a secretaria (e-mail: escoladepos@ufg.br, telefone/WhatsApp: 62 3521-1076).\n\n" +
-                "CONTEXTO GERAL:\n" + CONTEXT + "\n\n" +
-                (retrievedContext ? "CONTEXTO DINÂMICO DO BANCO DE DADOS (CSV):\n" + retrievedContext : "");
-
             const genAI = new GoogleGenerativeAI(apiKey);
             const model = genAI.getGenerativeModel({
                 model: modelName,
-                systemInstruction: dynamicSystemInstruction
+                systemInstruction: SYSTEM_MESSAGE
             });
 
             // Start chat with history (excluding the current user input which will be sent via stream)
@@ -614,4 +519,4 @@ const ChatEscolaPos = () => {
     );
 };
 
-export default ChatEscolaPos;
+export default ChatEscolaPosSemRag;
