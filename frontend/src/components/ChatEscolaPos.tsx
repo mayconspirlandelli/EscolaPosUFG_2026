@@ -80,9 +80,14 @@ const ChatEscolaPos = () => {
     const flow = {
 
         start: {
-            message: (params: any) => {
-                return `Olá! 👋\n\nSeja bem-vindo(a) à Escola de Pós-Graduação da UFG.\n\nComo posso ajudar você hoje?`;
-            },
+            message: "Olá! 👋\n\nSeja bem-vindo(a) à Escola de Pós-Graduação da UFG. Sou a Ana, sua assistente virtual.",
+            
+            path: "identifica_aluno"
+        },
+
+        identifica_aluno: {
+            message: "Como posso ajudar você hoje?",
+            transition: { duration: 0 },
             options: ["Já sou aluno", "Desejo ser aluno"],
             path: (params: any) => {
                 if (params.userInput === "Já sou aluno") {
